@@ -3,6 +3,7 @@ package resp
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -18,7 +19,7 @@ func NewParser(reader *bufio.Reader) *Parser {
 	}
 }
 
-func (parser *Parser) Parse() (interface{}, error) {
+func (parser *Parser) Parse() (any, error) {
 	reader := parser.reader;
 
 	typeByte, err := reader.ReadByte()
@@ -27,18 +28,38 @@ func (parser *Parser) Parse() (interface{}, error) {
 		return nil, err
 	}
 
+	// Reading upto \n doesn't matter
+	// For having \n inside payload, you can send it inside
+	// bulk strings since they read the exact number of bytes
+	// without considering the delimiter
+
 	switch typeByte {
 		case '+':
-			line, _ := reader.ReadString('\n')
+			line, err := reader.ReadString('\n')
+
+			if err != nil {
+				return nil, err
+			}
+
+			if len(line) < 2 || line[len(line) - 2] != '\r' {
+				return nil, errors.New("Protocol error")
+			}
+
 			return strings.TrimRight(line, "\r\n"), nil
 	
 		case ':':
 			line, _ := reader.ReadString('\n')
+			if len(line) < 2 || line[len(line) - 2] != '\r' {
+				return nil, errors.New("Protocol error")
+			}
 			return strconv.Atoi(strings.TrimRight(line, "\r\n"))
 		
 		case '$':
 			line, _ := reader.ReadString('\n')
-			
+			if len(line) < 2 || line[len(line) - 2] != '\r' {
+				return nil, errors.New("Protocol error")
+			}
+
 			length, err := strconv.Atoi(strings.TrimRight(line, "\r\n"))
 
 			if err != nil {
@@ -80,6 +101,7 @@ func (parser *Parser) Parse() (interface{}, error) {
 			return message, nil
 		
 		default: 
-			return nil, errors.New("Invalid data type")
+			fmt.Println("invalid type")
+			return nil, errors.New("INVALID DATA TYPE")
 	}
 }

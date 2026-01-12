@@ -2,10 +2,11 @@ package main
 
 import (
 	"bufio"
+	"io"
 	"log"
 	"net"
-	"server/resp"
 	"server/commands"
+	"server/resp"
 )
 
 
@@ -36,12 +37,32 @@ func handleConnection(conn net.Conn) {
 	parser := resp.NewParser(reader)
 	executor := commands.NewExecutor()
 
-	message, err := parser.Parse();
-	if err != nil {
-		return;
+	for {
+		message, err := parser.Parse();
+
+		if err != nil && err.Error() == "INVALID DATA TYPE" {
+			conn.Write(executor.GetErrorBytes(err.Error()))
+			continue
+		} else if err != nil && err == io.EOF{
+			return;
+		} else if err != nil {
+			conn.Write(executor.GetErrorBytes(err.Error()))
+			continue;
+		}
+
+		cmd, err := executor.ParseCommand(message)
+
+		if err != nil {
+			conn.Write(executor.GetErrorBytes("ERR COULD NOT EXECUTE COMMAND"))
+			continue
+		}
+
+		response := executor.ExecuteCommand(cmd)
+
+		if response == nil {
+			conn.Write(executor.GetErrorBytes("ERR COULD NOT EXECUTE COMMAND"))
+			continue
+		}
+		conn.Write(response)
 	}
-
-	// commands := executor.ParseCommands(message)
-
-
 }
