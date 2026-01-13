@@ -60,6 +60,8 @@ func handleConnection(conn net.Conn, executor *commands.Executor) {
 
 		cmd, err := executor.ParseCommand(message)
 
+		fmt.Println(cmd)
+
 		if err != nil {
 			conn.Write(executor.GetErrorBytes("ERR COULD NOT EXECUTE COMMAND"))
 			continue
