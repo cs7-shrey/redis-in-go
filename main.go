@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"server/commands"
+	"server/errs"
 	"server/resp"
+	"server/store"
 )
 
 
@@ -19,28 +22,33 @@ func main() {
 
 	defer server.Close()
 
+	store := store.NewStore()
+	executor := commands.NewExecutor(store)
+
 	for {
 		conn, err := server.Accept()
 		if err != nil {
 			log.Println("Error accepting connection ", err)
 			continue
 		}
-
-		go handleConnection(conn)
+		
+		go handleConnection(conn, executor)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+
+func handleConnection(conn net.Conn, executor *commands.Executor) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
 	parser := resp.NewParser(reader)
-	executor := commands.NewExecutor()
 
 	for {
 		message, err := parser.Parse();
 
-		if err != nil && err.Error() == "INVALID DATA TYPE" {
+		fmt.Println(message)
+
+		if err != nil && err == errs.InvalidDataType{
 			conn.Write(executor.GetErrorBytes(err.Error()))
 			continue
 		} else if err != nil && err == io.EOF{

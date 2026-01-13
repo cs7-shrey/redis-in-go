@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"server/errs"
 	"strconv"
 	"strings"
 )
@@ -102,6 +103,6 @@ func (parser *Parser) Parse() (any, error) {
 		
 		default: 
 			fmt.Println("invalid type")
-			return nil, errors.New("INVALID DATA TYPE")
+			return nil, errs.InvalidDataType
 	}
 }
