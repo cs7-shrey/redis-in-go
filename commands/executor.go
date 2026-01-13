@@ -5,25 +5,15 @@ import (
 	"fmt"
 	"server/errs"
 	"server/store"
+	"server/store/actions"
 )
 
 type Executor struct {
 	store *store.Store
 }
 
-type Action string
-
-const (
-	ping   Action = "ping"
-	echo   Action = "echo"
-	get    Action = "get"
-	set    Action = "set"
-	del    Action = "del"
-	exists Action = "exists"
-)
-
 type RedisCommand struct {
-	Action    Action
+	Action    actions.Action
 	Arguments []string
 }
 
@@ -91,29 +81,29 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 	}
 
 	switch cmd.Action {
-	case ping:
+	case actions.Ping:
 		return e.getSimpleStringBytes("PONG")
 
-	case echo:
+	case actions.Echo:
 		return e.getSimpleStringBytes(cmd.Arguments[0])
 
-	case get:
+	case actions.Get:
 		value, err := e.store.Get(cmd.Arguments[0])
 		if err != nil {
 			return e.GetErrorBytes(err.Error())
 		}
 		return e.getSimpleStringBytes(value)
 
-	case set:
+	case actions.Set:
 		e.store.Set(cmd.Arguments[0], cmd.Arguments[1])
 		return e.getSimpleStringBytes("OK")
 
-	case del:
+	case actions.Del:
 		n := e.store.Delete(cmd.Arguments)
 		response := fmt.Sprintf("%d", n)
 		return e.getSimpleStringBytes(response)
 
-	case exists:
+	case actions.Exists:
 		n := e.store.Exists(cmd.Arguments)
 		response := fmt.Sprintf("%d", n)
 		return e.getSimpleStringBytes(response)
@@ -137,10 +127,10 @@ func (e *Executor) getBulkStringBytes(s string) []byte {
 	return []byte(bulkString)
 }
 
-func (e *Executor) validateCommandExistence(command string) (Action, error) {
-	switch Action(command) {
-	case ping, get, set, del, exists, echo:
-		return Action(command), nil
+func (e *Executor) validateCommandExistence(command string) (actions.Action, error) {
+	switch actions.Action(command) {
+	case actions.Ping, actions.Get, actions.Set, actions.Del, actions.Exists, actions.Echo:
+		return actions.Action(command), nil
 
 	default:
 		return "", errs.InvalidCommand
@@ -149,28 +139,28 @@ func (e *Executor) validateCommandExistence(command string) (Action, error) {
 
 func (e *Executor) validateCommandArgs(cmd *RedisCommand) error {
 	switch cmd.Action {
-	case ping:
+	case actions.Ping:
 		if len(cmd.Arguments) != 0 {
 			return errs.IncorrectNumberOfArguments
 		}
 
 		return nil
 
-	case get, echo:
+	case actions.Get, actions.Echo:
 		if len(cmd.Arguments) < 1 || len(cmd.Arguments) > 2 {
 			return errs.IncorrectNumberOfArguments
 		}
 
 		return nil
 
-	case del, exists:
+	case actions.Del, actions.Exists:
 		if len(cmd.Arguments) < 1 {
 			return errs.IncorrectNumberOfArguments
 		}
 
 		return nil
 
-	case set:
+	case actions.Set:
 		if len(cmd.Arguments) < 2 {
 			return errs.IncorrectNumberOfArguments
 		}
