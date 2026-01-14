@@ -1,6 +1,9 @@
 package objects
 
-import "errors"
+import (
+	"errors"
+	"server/store/actions"
+)
 
 type Chunk struct {
 	elements []string
@@ -89,10 +92,17 @@ func (c *Chunk) PopFront() (string, error) {
 	return element, nil
 }
 
+type BlockingPopClient struct {
+	channel chan string
+	direction actions.BlockingPopDirection
+}
+
 type RedisList struct {
 	size int
 	head *Chunk
 	tail *Chunk
+
+	blockingPopClients []*BlockingPopClient
 }
 
 func NewList() *RedisList {
@@ -103,6 +113,22 @@ func NewList() *RedisList {
 		tail: chunk,
 		size: 0,
 	}
+}
+
+func (rl *RedisList) LPush(values []string) int {
+	for _, value := range values {
+		rl.lPushSingle(value)
+	}
+	rl.handleBlockingPopOnPush()
+	return rl.size
+}
+
+func (rl *RedisList) RPush(values []string) int {
+	for _, value := range values {
+		rl.rPushSingle(value)
+	}
+	rl.handleBlockingPopOnPush()
+	return rl.size
 }
 
 func (rl *RedisList) LPop() string {
@@ -120,20 +146,6 @@ func (rl *RedisList) LPop() string {
 	return el
 }
 
-func (rl *RedisList) LPush(value string) int {
-	head := rl.head
-
-	if !head.CanPush(value) {
-		rl.expandHead()
-	}
-
-	// add to the head
-	head.PushFront(value)
-	rl.size++
-
-	return rl.size
-}
-
 func (rl *RedisList) RPop() string {
 	tail := rl.tail
 
@@ -149,7 +161,55 @@ func (rl *RedisList) RPop() string {
 	return el
 }
 
-func (rl *RedisList) RPush(value string) int {
+func (rl *RedisList) AddBlockingPopClient(channel chan string, direction actions.BlockingPopDirection) {
+	client := &BlockingPopClient{
+		channel: channel,
+		direction: direction,
+	}
+
+	rl.blockingPopClients = append(rl.blockingPopClients, client)
+}
+
+func (rl *RedisList) IsEmpty() bool {
+	return rl.head == rl.tail && rl.head.IsEmpty()
+}
+
+func (rl *RedisList) GetSize() int {
+	return rl.size
+}
+
+func (rl *RedisList) handleBlockingPopOnPush() int {
+	iters := min(len(rl.blockingPopClients), rl.size)
+
+	for i := range iters {
+		client := rl.blockingPopClients[i]
+		
+		if client.direction == actions.BLEFT {
+			client.channel <- rl.LPop()
+		} else {
+			client.channel <- rl.RPop()
+		}
+	}
+
+	rl.blockingPopClients = rl.blockingPopClients[iters:]
+	return iters
+}
+
+func (rl *RedisList) lPushSingle(value string) int {
+	head := rl.head
+
+	if !head.CanPush(value) {
+		rl.expandHead()
+	}
+
+	// add to the head
+	head.PushFront(value)
+	rl.size++
+
+	return rl.size
+}
+
+func (rl *RedisList) rPushSingle(value string) int {
 	tail := rl.tail
 
 	if !tail.CanPush(value) {
@@ -159,14 +219,6 @@ func (rl *RedisList) RPush(value string) int {
 	tail.PushBack(value)
 	rl.size++
 
-	return rl.size
-}
-
-func (rl *RedisList) IsEmpty() bool {
-	return rl.head == rl.tail && rl.head.IsEmpty()
-}
-
-func (rl *RedisList) GetSize() int {
 	return rl.size
 }
 

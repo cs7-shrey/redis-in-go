@@ -14,6 +14,8 @@ const (
 	LPop Action = "lpop"
 	RPush Action = "rpush"
 	RPop Action = "rpop"
+	BLPop Action = "blpop"
+	BRPop Action = "brpop"
 )
 
 var ValidCommands = map[Action]struct{}{
@@ -27,4 +29,13 @@ var ValidCommands = map[Action]struct{}{
 	LPush:  {},
 	RPush:  {},
 	RPop:   {},
+	BLPop: 	{},
+	BRPop: 	{},
 }
+
+type BlockingPopDirection Action
+
+const (
+	BLEFT BlockingPopDirection = "left"
+	BRIGHT BlockingPopDirection = "right"			// Blocking Right
+)

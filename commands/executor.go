@@ -155,6 +155,20 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 		}
 		return e.getArrayOfBulkStringBytes(items)
 
+	case actions.BLPop:
+		item, err := e.store.BLPop(cmd.Arguments[0])
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+		return e.getBulkStringBytes(item)
+
+	case actions.BRPop:
+		item, err := e.store.BRPop(cmd.Arguments[0])
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+		return e.getBulkStringBytes(item)
+
 	default:
 		return e.GetErrorBytes("ERR unknown command")
 	}
@@ -259,6 +273,12 @@ func (e *Executor) validateCommandArgs(cmd *RedisCommand) error {
 
 	case actions.LPush, actions.RPush:
 		if len(cmd.Arguments) < 2 {
+			return errs.IncorrectNumberOfArguments
+		}
+		return nil
+	
+	case actions.BLPop, actions.BRPop:
+		if len(cmd.Arguments) != 1 {
 			return errs.IncorrectNumberOfArguments
 		}
 		return nil

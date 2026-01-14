@@ -154,7 +154,6 @@ func (store *Store) pop(key string, count int, popFn listPopFn) ([]string, error
 	if redisList, ok := object.Data.(*objects.RedisList); !ok {
 		return nil, errors.New("TYPE MISMATCH")
 	} else {
-		// unlikely since we delete an empty list
 		if redisList.GetSize() == 0 {
 			return nil, errors.New("CANNOT POP AN EMPTY LIST")
 		}
@@ -171,19 +170,13 @@ func (store *Store) pop(key string, count int, popFn listPopFn) ([]string, error
 
 func (store *Store) LPush(key string, items []string) (int, error) {
 	return store.push(key, items, func(list *objects.RedisList, items []string) int {
-		for _, item := range items {
-			list.LPush(item)
-		}
-		return list.GetSize()
+		return list.LPush(items)
 	})
 }
 
 func (store *Store) RPush(key string, items []string) (int, error) {
 	return store.push(key, items, func(list *objects.RedisList, items []string) int {
-		for _, item := range items {
-			list.RPush(item)
-		}
-		return list.GetSize()
+		return list.RPush(items)
 	})
 }
 
@@ -213,4 +206,70 @@ func (store *Store) RPop(key string, count int) ([]string, error) {
 
 		return items
 	})
+}
+
+func (store *Store) blockingPop(key string, direction actions.BlockingPopDirection) (string, error) {
+	if direction != actions.BLEFT && direction != actions.BRIGHT {
+		return "", errors.New("INVALID POP")
+	}
+
+	var redisList *objects.RedisList = nil
+
+	object, exists := store.kvMap[key]
+
+	if !exists {
+		// acquiring lock for writing
+		store.mu.Lock()
+
+		object := objects.NewList()
+		store.kvMap[key] = objects.NewObject(objects.List, object)		// place reference
+		redisList = object
+
+		store.mu.Unlock()
+	} else {
+		object, err := store.validateActionForDataType(object, actions.LPop)
+		if err != nil {
+			return "", err
+		}
+
+		if redisListFromData, ok := object.Data.(*objects.RedisList); !ok {
+			return "", errors.New("SERVER TYPE MISMATCH")
+		} else {
+			redisList = redisListFromData
+		}
+	}
+
+	// acquiring lock when touching list
+	store.mu.Lock()
+	isEmpty := redisList.IsEmpty()
+	if !isEmpty {
+		if direction == "right"	{
+			item := redisList.LPop() 
+			store.mu.Unlock()
+			return item , nil
+		} else {
+			item := redisList.RPop()
+			store.mu.Unlock()
+			return item, nil
+		}
+	} else {
+		// redis list is empty
+		// make a channel, and add a blocking client			
+
+		channel := make(chan string)
+		redisList.AddBlockingPopClient(channel, direction)
+		store.mu.Unlock()		// releasing as we now let the redis list handling blocking pop upon a push
+
+		item := <-channel
+
+		return item, nil
+	}
+}
+
+func (store *Store) BLPop(key string) (string, error) {
+	return store.blockingPop(key, actions.BLEFT)
+}
+
+func (store *Store) BRPop(key string) (string, error) {
+	return store.blockingPop(key, actions.BRIGHT)
 }
