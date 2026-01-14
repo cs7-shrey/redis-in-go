@@ -106,10 +106,10 @@ func (store *Store) Exists(keys []string) int {
 	return count
 }
 
-type listPushFn func(list *objects.RedisList, items []string) int
+type listPushFn func(list *objects.RedisList, items []string) []objects.BlockingPopDisperal
 type listPopFn func(list *objects.RedisList, count int) []string
 
-func (store *Store) push(key string, items []string, pushFn listPushFn) (int, error) {
+func (store *Store) push(key string, items []string, pushFn listPushFn) ([]objects.BlockingPopDisperal, int, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
@@ -119,20 +119,39 @@ func (store *Store) push(key string, items []string, pushFn listPushFn) (int, er
 	if !exists {
 		redisList := objects.NewList()
 		store.kvMap[key] = objects.NewObject(objects.List, redisList)		// place reference
-		return pushFn(redisList, items), nil
+		result := pushFn(redisList, items)
+		return result, redisList.GetSize(), nil
 	}
 
 	object, err := store.validateActionForDataType(object, actions.LPush)		// same for LPush or RPush (use either)
 
 	if err != nil {
+		store.mu.Unlock()
+		return nil, 0, err
+	}
+
+	redisList, ok := object.Data.(*objects.RedisList);
+
+	if !ok {
+		store.mu.Unlock()
+		return nil, 0, errors.New("TYPE MISMATCH")
+	} 
+
+	result := pushFn(redisList, items)
+	return result, redisList.GetSize(), nil
+}
+
+func (store *Store) pushWithDispersal(key string, items []string, pushFn listPushFn) (int, error) {
+	dispersals, newSize, err := store.push(key, items, pushFn)
+	if err != nil {
 		return 0, err
 	}
 
-	if redisList, ok := object.Data.(*objects.RedisList); !ok {
-		return 0, errors.New("TYPE MISMATCH")
-	} else {
-		return pushFn(redisList, items), nil
+	for _, dispersal := range dispersals {
+		dispersal.Channel <- dispersal.Value
 	}
+
+	return newSize, nil
 }
 
 func (store *Store) pop(key string, count int, popFn listPopFn) ([]string, error) {
@@ -169,13 +188,13 @@ func (store *Store) pop(key string, count int, popFn listPopFn) ([]string, error
 }
 
 func (store *Store) LPush(key string, items []string) (int, error) {
-	return store.push(key, items, func(list *objects.RedisList, items []string) int {
+	return store.pushWithDispersal(key, items, func(list *objects.RedisList, items []string) []objects.BlockingPopDisperal {
 		return list.LPush(items)
 	})
 }
 
 func (store *Store) RPush(key string, items []string) (int, error) {
-	return store.push(key, items, func(list *objects.RedisList, items []string) int {
+	return store.pushWithDispersal(key, items, func(list *objects.RedisList, items []string) []objects.BlockingPopDisperal {
 		return list.RPush(items)
 	})
 }
@@ -215,11 +234,11 @@ func (store *Store) blockingPop(key string, direction actions.BlockingPopDirecti
 
 	var redisList *objects.RedisList = nil
 
+	store.mu.Lock()
 	object, exists := store.kvMap[key]
 
 	if !exists {
 		// acquiring lock for writing
-		store.mu.Lock()
 
 		object := objects.NewList()
 		store.kvMap[key] = objects.NewObject(objects.List, object)		// place reference
@@ -227,6 +246,7 @@ func (store *Store) blockingPop(key string, direction actions.BlockingPopDirecti
 
 		store.mu.Unlock()
 	} else {
+		store.mu.Unlock()
 		object, err := store.validateActionForDataType(object, actions.LPop)
 		if err != nil {
 			return "", err

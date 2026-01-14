@@ -97,6 +97,11 @@ type BlockingPopClient struct {
 	direction actions.BlockingPopDirection
 }
 
+type BlockingPopDisperal struct {
+	Channel chan string
+	Value string
+}
+
 type RedisList struct {
 	size int
 	head *Chunk
@@ -115,20 +120,18 @@ func NewList() *RedisList {
 	}
 }
 
-func (rl *RedisList) LPush(values []string) int {
+func (rl *RedisList) LPush(values []string) []BlockingPopDisperal {
 	for _, value := range values {
 		rl.lPushSingle(value)
 	}
-	rl.handleBlockingPopOnPush()
-	return rl.size
+	return rl.getBlockingPopDispersal()
 }
 
-func (rl *RedisList) RPush(values []string) int {
+func (rl *RedisList) RPush(values []string) []BlockingPopDisperal {
 	for _, value := range values {
 		rl.rPushSingle(value)
 	}
-	rl.handleBlockingPopOnPush()
-	return rl.size
+	return rl.getBlockingPopDispersal()
 }
 
 func (rl *RedisList) LPop() string {
@@ -178,21 +181,27 @@ func (rl *RedisList) GetSize() int {
 	return rl.size
 }
 
-func (rl *RedisList) handleBlockingPopOnPush() int {
+func (rl *RedisList) getBlockingPopDispersal() []BlockingPopDisperal {
 	iters := min(len(rl.blockingPopClients), rl.size)
+	blockingPopDispersals := make([]BlockingPopDisperal, iters)
 
 	for i := range iters {
 		client := rl.blockingPopClients[i]
 		
 		if client.direction == actions.BLEFT {
-			client.channel <- rl.LPop()
+			blockingPopDispersals[i] = BlockingPopDisperal{
+				Channel: client.channel,
+				Value: rl.LPop(),
+			}
 		} else {
-			client.channel <- rl.RPop()
+			blockingPopDispersals[i] = BlockingPopDisperal{
+				Channel: client.channel,
+				Value: rl.RPop(),
+			}
 		}
 	}
 
-	rl.blockingPopClients = rl.blockingPopClients[iters:]
-	return iters
+	return blockingPopDispersals
 }
 
 func (rl *RedisList) lPushSingle(value string) int {
