@@ -6,6 +6,7 @@ import (
 	"server/errs"
 	"server/store"
 	"server/store/actions"
+	"strconv"
 )
 
 type Executor struct {
@@ -48,7 +49,7 @@ func (e *Executor) ParseCommand(msg any) (*RedisCommand, error) {
 
 		action, err := e.validateCommandExistence(cmd)
 
-		args := make([]string, len(msg) - 1)
+		args := make([]string, len(msg)-1)
 		for i := 1; i < len(msg); i++ {
 			s, ok := msg[i].(string)
 			if !ok {
@@ -108,6 +109,55 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 		response := fmt.Sprintf("%d", n)
 		return e.getSimpleStringBytes(response)
 
+	case actions.LPush:
+		n, err := e.store.LPush(cmd.Arguments[0], cmd.Arguments[1:])
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+		response := fmt.Sprintf("%d", n)
+		return e.getSimpleStringBytes(response)
+
+	case actions.LPop:
+		count := 1
+		if len(cmd.Arguments) == 2 {
+			count, err = strconv.Atoi(cmd.Arguments[1])
+			if err != nil || count <= 0 {
+				return e.GetErrorBytes("COUNT MUST BE A POSITIVE INTEGER")
+			}
+		}
+		items, err := e.store.LPop(cmd.Arguments[0], count)
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+		return e.getArrayOfBulkStringBytes(items)
+
+	case actions.RPush:
+		n, err := e.store.RPush(cmd.Arguments[0], cmd.Arguments[1:])
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+		response := fmt.Sprintf("%d", n)
+		return e.getSimpleStringBytes(response)
+
+	case actions.RPop:
+		count := 1
+		if len(cmd.Arguments) == 2 {
+			count, err = strconv.Atoi(cmd.Arguments[1])
+			if err != nil || count <= 0 {
+				return e.GetErrorBytes("COUNT MUST BE A POSITIVE INTEGER")
+			}
+		}
+
+		count, err := strconv.Atoi(cmd.Arguments[1])
+		if err != nil || count <= 0 {
+			return e.GetErrorBytes("COUNT MUST BE A POSITIVE INTEGER")
+		}
+		items, err := e.store.RPop(cmd.Arguments[0], count)
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+		return e.getArrayOfBulkStringBytes(items)
+
 	default:
 		return e.GetErrorBytes("ERR unknown command")
 	}
@@ -122,17 +172,54 @@ func (e *Executor) getSimpleStringBytes(s string) []byte {
 }
 
 func (e *Executor) getBulkStringBytes(s string) []byte {
-	length := len(s)
-	bulkString := fmt.Sprintf("$%d\r\n%s", length, s)
-	return []byte(bulkString)
+	data := []byte(s)
+
+	// preallocate: $ length(20 decimal places) \r\n data \r\n
+	size := e.getBulkStringBytesSize(s)
+	buf := make([]byte, 0, size)
+
+	buf = append(buf, '$')
+	buf = strconv.AppendInt(buf, int64(len(data)), 10)
+	buf = append(buf, '\r', '\n')
+	buf = append(buf, data...)
+	buf = append(buf, '\r', '\n')
+
+	return buf
+}
+
+func (e *Executor) getArrayOfBulkStringBytes(items []string) []byte {
+	// * length(20 decimal) \r\n data
+	capEst := 1 + 20 + 2
+
+	for _, item := range items {
+		capEst += e.getBulkStringBytesSize(item)
+	}
+
+	buf := make([]byte, 0, capEst)
+
+	// array header
+	buf = append(buf, '*')
+	buf = strconv.AppendInt(buf, int64(len(items)), 10)
+	buf = append(buf, '\r', '\n')
+
+	for _, item := range items {
+		buf = append(buf, e.getBulkStringBytes(item)...)
+	}
+
+	return buf
+}
+
+func (e *Executor) getBulkStringBytesSize(s string) int {
+	// $ length(20 decimal places) \r\n len(s) \r\n
+	return 1+ 20 + 2 + len(s) + 2
 }
 
 func (e *Executor) validateCommandExistence(command string) (actions.Action, error) {
-	switch actions.Action(command) {
-	case actions.Ping, actions.Get, actions.Set, actions.Del, actions.Exists, actions.Echo:
-		return actions.Action(command), nil
+	action := actions.Action(command)
 
-	default:
+	if _, ok := actions.ValidCommands[action]; ok {
+		return action, nil
+	} else {
 		return "", errs.InvalidCommand
 	}
 }
@@ -161,6 +248,19 @@ func (e *Executor) validateCommandArgs(cmd *RedisCommand) error {
 		return nil
 
 	case actions.Set:
+		if len(cmd.Arguments) < 2 {
+			return errs.IncorrectNumberOfArguments
+		}
+		return nil
+
+	// list, count or list
+	case actions.LPop, actions.RPop:
+		if len(cmd.Arguments) != 1 && len(cmd.Arguments) != 2 {
+			return errs.IncorrectNumberOfArguments
+		}
+		return nil
+
+	case actions.LPush, actions.RPush:
 		if len(cmd.Arguments) < 2 {
 			return errs.IncorrectNumberOfArguments
 		}

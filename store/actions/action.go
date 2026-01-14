@@ -15,3 +15,16 @@ const (
 	RPush Action = "rpush"
 	RPop Action = "rpop"
 )
+
+var ValidCommands = map[Action]struct{}{
+	Ping:   {},
+	Get:    {},
+	Set:    {},
+	Del:    {},
+	Exists: {},
+	Echo:   {},
+	LPop:   {},
+	LPush:  {},
+	RPush:  {},
+	RPop:   {},
+}
