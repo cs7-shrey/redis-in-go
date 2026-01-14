@@ -125,6 +125,7 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 				return e.GetErrorBytes("COUNT MUST BE A POSITIVE INTEGER")
 			}
 		}
+
 		items, err := e.store.LPop(cmd.Arguments[0], count)
 		if err != nil {
 			return e.GetErrorBytes(err.Error())
@@ -147,11 +148,7 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 				return e.GetErrorBytes("COUNT MUST BE A POSITIVE INTEGER")
 			}
 		}
-
-		count, err := strconv.Atoi(cmd.Arguments[1])
-		if err != nil || count <= 0 {
-			return e.GetErrorBytes("COUNT MUST BE A POSITIVE INTEGER")
-		}
+		
 		items, err := e.store.RPop(cmd.Arguments[0], count)
 		if err != nil {
 			return e.GetErrorBytes(err.Error())
