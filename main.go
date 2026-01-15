@@ -10,6 +10,7 @@ import (
 	"server/errs"
 	"server/resp"
 	"server/store"
+	"server/store/cleanup"
 )
 
 
@@ -24,6 +25,7 @@ func main() {
 
 	store := store.NewStore()
 	executor := commands.NewExecutor(store)
+	go cleanup.RunCleanup(store)
 
 	for {
 		conn, err := server.Accept()

@@ -4,8 +4,10 @@ import (
 	"errors"
 	"server/errs"
 	"server/store/actions"
+	"server/store/cleanup"
 	"server/store/objects"
 	"sync"
+	"time"
 )
 
 type Store struct {
@@ -130,9 +132,29 @@ func (store *Store) Expire(key string, seconds int64) error {
 		return errs.ErrNotFound
 	}
 
-	// TODO: might have to also insert in the expire list/heap
 	object.Expire(seconds)
+	pq := cleanup.GetPQ()
+
+	pq.HPush(key, object.GetExpiry().At)
+
 	return nil
+}
+
+func (store *Store) GetExpiry(key string) (time.Time, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	object, exists := store.getObject(key)
+	if !exists {
+		return time.Time{}, errs.ErrNotFound
+	}
+
+	expiry := object.GetExpiry()
+	if expiry == nil {
+		return time.Time{}, errors.New("No expiry on element")
+	}
+
+	return expiry.At, nil
 }
 
 func (store *Store) TTL(key string) int {

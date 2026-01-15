@@ -18,7 +18,7 @@ type Object struct {
 }
 
 type Expiry struct {
-	at time.Time
+	At time.Time
 }
 
 func NewObject(dataType DataType, data any) *Object {
@@ -29,18 +29,22 @@ func NewObject(dataType DataType, data any) *Object {
 }
 
 func (object *Object) HasExpired() bool {
-	return object.expiry != nil && time.Now().After(object.expiry.at)
+	return object.expiry != nil && time.Now().After(object.expiry.At)
 }
 
 func (object *Object) Expire(seconds int64) {
 	exp_at := time.Now().Add(time.Duration(seconds) * time.Second)
 	if object.expiry != nil {
-		object.expiry.at = exp_at
+		object.expiry.At = exp_at
 	} else {
 		object.expiry = &Expiry{
-			at: exp_at,
+			At: exp_at,
 		}
 	}
+}
+
+func (object *Object) GetExpiry() *Expiry {
+	return object.expiry
 }
 
 func (object *Object) TTL() int {
@@ -48,5 +52,5 @@ func (object *Object) TTL() int {
 		return -1
 	}
 
-	return int(time.Until(object.expiry.at).Seconds())
+	return int(time.Until(object.expiry.At).Seconds())
 }
