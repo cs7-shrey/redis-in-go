@@ -109,6 +109,19 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 		response := fmt.Sprintf("%d", n)
 		return e.getSimpleStringBytes(response)
 
+	case actions.Expire:
+		expiry_seconds, err := strconv.Atoi(cmd.Arguments[1])
+		if err != nil || expiry_seconds <= 0{
+			return e.GetErrorBytes("TIME IS NOT A POSITIVE INTEGER")
+		}
+
+		err = e.store.Expire(cmd.Arguments[0], int64(expiry_seconds))
+		if err != nil {
+			return e.getIntegerBytes(0)
+		}
+
+		return e.getIntegerBytes(1)
+
 	case actions.LPush:
 		n, err := e.store.LPush(cmd.Arguments[0], cmd.Arguments[1:])
 		if err != nil {
@@ -180,6 +193,23 @@ func (e *Executor) GetErrorBytes(s string) []byte {
 
 func (e *Executor) getSimpleStringBytes(s string) []byte {
 	return []byte(fmt.Sprintf("+%s\r\n", s))
+}
+
+func (e *Executor) getIntegerBytes(i int) []byte {
+	extra := 0
+	if i < 0 { extra = 1}
+
+	size := 1 + extra + 20 + 2
+	buf := make([]byte, 0, size)
+	buf = append(buf, ':')
+	if i < 0 {
+		buf = append(buf, '-')
+	}
+	buf = strconv.AppendInt(buf, int64(i), 10)
+	buf = append(buf, '\r')
+	buf = append(buf, '\n')
+
+	return buf
 }
 
 func (e *Executor) getBulkStringBytes(s string) []byte {
@@ -260,6 +290,12 @@ func (e *Executor) validateCommandArgs(cmd *RedisCommand) error {
 
 	case actions.Set:
 		if len(cmd.Arguments) < 2 {
+			return errs.IncorrectNumberOfArguments
+		}
+		return nil
+	
+	case actions.Expire:
+		if len(cmd.Arguments) != 2 {
 			return errs.IncorrectNumberOfArguments
 		}
 		return nil

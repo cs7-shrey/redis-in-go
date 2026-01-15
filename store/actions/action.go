@@ -9,6 +9,7 @@ const (
 	Set    Action = "set"
 	Del    Action = "del"
 	Exists Action = "exists"
+	Expire Action = "expire"
 
 	LPush Action = "lpush"
 	LPop Action = "lpop"
@@ -24,6 +25,7 @@ var ValidCommands = map[Action]struct{}{
 	Set:    {},
 	Del:    {},
 	Exists: {},
+	Expire: {},
 	Echo:   {},
 	LPop:   {},
 	LPush:  {},

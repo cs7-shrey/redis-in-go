@@ -21,7 +21,7 @@ func NewStore() *Store {
 
 func (store *Store) validateActionForDataType(object *objects.Object, action actions.Action) (*objects.Object, error) {
 	// universal actions
-	if action == actions.Del || action == actions.Exists{
+	if action == actions.Del || action == actions.Exists || action == actions.Expire{
 		return object, nil
 	}
 
@@ -50,11 +50,26 @@ func (store *Store) validateActionForDataType(object *objects.Object, action act
 	}
 }
 
+func (store *Store) getObject(key string) (*objects.Object, bool) {
+	// must be used with a lock
+	object, ok := store.kvMap[key]
+	if !ok {
+		return nil, false
+	}
+
+	if object.HasExpired() {
+		delete(store.kvMap, key)
+		return nil, false
+	}
+
+	return object, true
+}
+
 func (store *Store) Get(key string) (string, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	value, ok := store.kvMap[key]
+	value, ok := store.getObject(key)
 	if !ok {
 		return "", errs.ErrNotFound
 	}
@@ -81,7 +96,7 @@ func (store *Store) Delete(keys []string) int {
 	count := 0
 
 	for _, key := range keys {
-		_, exists := store.kvMap[key]
+		_, exists := store.getObject(key)
 		if exists {
 			count++
 			delete(store.kvMap, key)
@@ -98,12 +113,23 @@ func (store *Store) Exists(keys []string) int {
 	count := 0
 
 	for _, key := range keys {
-		_, exists := store.kvMap[key]
+		_, exists := store.getObject(key)
 		if exists {
 			count += 1
 		}
 	}
 	return count
+}
+
+func (store *Store) Expire(key string, seconds int64) error {
+	object, exists := store.getObject(key)
+	if !exists {
+		return errs.ErrNotFound
+	}
+
+	// TODO: might have to also insert in the expire list/heap
+	object.Expire(seconds)
+	return nil
 }
 
 type listPushFn func(list *objects.RedisList, items []string) []objects.BlockingPopDisperal
@@ -113,7 +139,7 @@ func (store *Store) push(key string, items []string, pushFn listPushFn) ([]objec
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	object, exists := store.kvMap[key]
+	object, exists := store.getObject(key)
 
 	// make a new list
 	if !exists {
@@ -158,7 +184,7 @@ func (store *Store) pop(key string, count int, popFn listPopFn) ([]string, error
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	
-	object, exists := store.kvMap[key]
+	object, exists := store.getObject(key)
 
 	if !exists {
 		return nil, errs.ErrNotFound
@@ -235,7 +261,7 @@ func (store *Store) blockingPop(key string, direction actions.BlockingPopDirecti
 	var redisList *objects.RedisList = nil
 
 	store.mu.Lock()
-	object, exists := store.kvMap[key]
+	object, exists := store.getObject(key)
 
 	if !exists {
 		// acquiring lock for writing
