@@ -21,7 +21,7 @@ func NewStore() *Store {
 
 func (store *Store) validateActionForDataType(object *objects.Object, action actions.Action) (*objects.Object, error) {
 	// universal actions
-	if action == actions.Del || action == actions.Exists || action == actions.Expire{
+	if action == actions.Del || action == actions.Exists || action == actions.Expire || action == actions.TTL || action == actions.Set {
 		return object, nil
 	}
 
@@ -122,6 +122,9 @@ func (store *Store) Exists(keys []string) int {
 }
 
 func (store *Store) Expire(key string, seconds int64) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
 	object, exists := store.getObject(key)
 	if !exists {
 		return errs.ErrNotFound
@@ -130,6 +133,19 @@ func (store *Store) Expire(key string, seconds int64) error {
 	// TODO: might have to also insert in the expire list/heap
 	object.Expire(seconds)
 	return nil
+}
+
+func (store *Store) TTL(key string) int {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	object, exists := store.getObject(key)
+	
+	if !exists {
+		return -2
+	}
+
+	return object.TTL()
 }
 
 type listPushFn func(list *objects.RedisList, items []string) []objects.BlockingPopDisperal

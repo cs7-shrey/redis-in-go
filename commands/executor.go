@@ -121,6 +121,10 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 		}
 
 		return e.getIntegerBytes(1)
+	
+	case actions.TTL:
+		ttl := e.store.TTL(cmd.Arguments[0])
+		return e.getIntegerBytes(ttl)
 
 	case actions.LPush:
 		n, err := e.store.LPush(cmd.Arguments[0], cmd.Arguments[1:])
@@ -201,10 +205,8 @@ func (e *Executor) getIntegerBytes(i int) []byte {
 
 	size := 1 + extra + 20 + 2
 	buf := make([]byte, 0, size)
+
 	buf = append(buf, ':')
-	if i < 0 {
-		buf = append(buf, '-')
-	}
 	buf = strconv.AppendInt(buf, int64(i), 10)
 	buf = append(buf, '\r')
 	buf = append(buf, '\n')
@@ -274,8 +276,9 @@ func (e *Executor) validateCommandArgs(cmd *RedisCommand) error {
 
 		return nil
 
-	case actions.Get, actions.Echo:
-		if len(cmd.Arguments) < 1 || len(cmd.Arguments) > 2 {
+	// GET key
+	case actions.Get, actions.Echo, actions.TTL:
+		if len(cmd.Arguments) != 1 {
 			return errs.IncorrectNumberOfArguments
 		}
 

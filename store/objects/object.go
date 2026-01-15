@@ -42,3 +42,11 @@ func (object *Object) Expire(seconds int64) {
 		}
 	}
 }
+
+func (object *Object) TTL() int {
+	if object.expiry == nil {
+		return -1
+	}
+
+	return int(time.Until(object.expiry.at).Seconds())
+}

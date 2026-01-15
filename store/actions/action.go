@@ -10,11 +10,12 @@ const (
 	Del    Action = "del"
 	Exists Action = "exists"
 	Expire Action = "expire"
+	TTL    Action = "ttl"
 
 	LPush Action = "lpush"
-	LPop Action = "lpop"
+	LPop  Action = "lpop"
 	RPush Action = "rpush"
-	RPop Action = "rpop"
+	RPop  Action = "rpop"
 	BLPop Action = "blpop"
 	BRPop Action = "brpop"
 )
@@ -26,18 +27,19 @@ var ValidCommands = map[Action]struct{}{
 	Del:    {},
 	Exists: {},
 	Expire: {},
+	TTL: 	{},
 	Echo:   {},
 	LPop:   {},
 	LPush:  {},
 	RPush:  {},
 	RPop:   {},
-	BLPop: 	{},
-	BRPop: 	{},
+	BLPop:  {},
+	BRPop:  {},
 }
 
 type BlockingPopDirection Action
 
 const (
-	BLEFT BlockingPopDirection = "left"
-	BRIGHT BlockingPopDirection = "right"			// Blocking Right
+	BLEFT  BlockingPopDirection = "left"
+	BRIGHT BlockingPopDirection = "right" // Blocking Right
 )
