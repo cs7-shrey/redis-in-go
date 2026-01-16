@@ -44,7 +44,12 @@ func (store *Store) validateActionForDataType(object *objects.Object, action act
 			return nil, errs.InvalidMethod
 		}
 	case objects.Hash:
-		return nil, errs.InvalidMethod
+		switch action {
+		case actions.HGet, actions.HSet, actions.HGetAll, actions.HDel:
+			return object, nil
+		default:
+			return nil, errs.InvalidMethod
+		}
 	case objects.Set:
 		return nil, errs.InvalidMethod
 	default:
@@ -356,4 +361,135 @@ func (store *Store) BLPop(key string) (string, error) {
 
 func (store *Store) BRPop(key string) (string, error) {
 	return store.blockingPop(key, actions.BRIGHT)
+}
+
+// ———————————————————————————————————————————————————————————————
+// Hash set methods
+// ———————————————————————————————————————————————————————————————
+
+func (store *Store) HGet(key, field string) (string, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	object, exists := store.getObject(key)
+	if !exists {
+		return "", errs.ErrNotFound
+	}
+
+	object, err := store.validateActionForDataType(object, actions.HGet)
+
+	if err != nil {
+		return "", err
+	}
+
+	hs, err := objects.ValidateObjectAsHash(object)
+	if err != nil {
+		return "", err
+	}
+
+	value, exists := hs.Get(field)
+
+	if !exists {
+		return "", errs.ErrNotFound
+	}
+
+	return value, nil
+}
+
+func (store *Store) HGetAll(key string) ([]string, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	object, exists := store.getObject(key)
+
+	if !exists {
+		return nil, errs.ErrNotFound
+	}
+
+	object, err := store.validateActionForDataType(object, actions.HGet)
+
+	if err != nil {
+		return nil, err
+	}
+
+	hs, err := objects.ValidateObjectAsHash(object)
+
+	if err != nil {
+		return nil, err
+	}
+
+	response := make([]string, 0, 2 * len(hs))
+
+	for k, v := range hs {
+		response = append(response, k)
+		response = append(response, v)
+	}
+
+	return response, nil
+}
+
+func (store *Store) HSet(key string, fieldValueArray []string) (int, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if len(fieldValueArray) & 2 == 1 {
+		return 0, errs.IncorrectNumberOfArguments
+	}
+
+	object, exists := store.getObject(key)
+	
+	if !exists {
+		object = objects.NewObject(objects.Hash, objects.NewHashSet())
+		store.kvMap[key] = object
+	}
+
+	object, err := store.validateActionForDataType(object, actions.HGet)
+
+	if err != nil {
+		return 0, err
+	}
+
+	hs, err := objects.ValidateObjectAsHash(object)
+
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for i := 0; i < len(fieldValueArray) - 1; i += 2 {
+		// check if exists
+		field, value := fieldValueArray[i], fieldValueArray[i+1]
+
+		if !hs.Exists(field) {
+			count++
+		}
+
+		hs.Set(field, value)
+	}
+
+	return count, nil
+}
+
+func (store *Store) HDel(key string, fields []string) (int, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	object, exists := store.getObject(key)
+
+	if !exists {
+		return 0, errs.ErrNotFound
+	}
+
+	object, err := store.validateActionForDataType(object, actions.HGet)
+
+	if err != nil {
+		return 0, err
+	}
+
+	hs, err := objects.ValidateObjectAsHash(object)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return hs.Delete(fields), nil
 }

@@ -90,6 +90,10 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 
 	case actions.Get:
 		value, err := e.store.Get(cmd.Arguments[0])
+		if err == errs.ErrNotFound {
+			return e.GetNil()
+		}
+
 		if err != nil {
 			return e.GetErrorBytes(err.Error())
 		}
@@ -186,9 +190,65 @@ func (e *Executor) ExecuteCommand(cmd *RedisCommand) []byte {
 		}
 		return e.getBulkStringBytes(item)
 
+
+	// ———————————————————————————————————————————————————————————————
+	// Hash set commands
+	// ———————————————————————————————————————————————————————————————
+	
+	case actions.HGet:
+		value, err := e.store.HGet(cmd.Arguments[0], cmd.Arguments[1])
+		if err == errs.ErrNotFound {
+			return e.GetNil()
+		}
+		
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+
+		return e.getBulkStringBytes(value)
+	
+	case actions.HSet:
+		cnt, err := e.store.HSet(cmd.Arguments[0], cmd.Arguments[1:])
+		
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+
+		return e.getIntegerBytes(cnt)
+	
+	case actions.HGetAll:
+		response, err := e.store.HGetAll(cmd.Arguments[0])
+
+		if err == errs.ErrNotFound {
+			return e.getArrayOfBulkStringBytes([]string{})
+		}
+
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+		
+		return e.getArrayOfBulkStringBytes(response)
+	
+	case actions.HDel:
+		cnt, err := e.store.HDel(cmd.Arguments[0], cmd.Arguments[1:])
+
+		if err == errs.ErrNotFound {
+			return e.getIntegerBytes(0)
+		}
+
+		if err != nil {
+			return e.GetErrorBytes(err.Error())
+		}
+
+		return e.getIntegerBytes(cnt)
+
 	default:
 		return e.GetErrorBytes("ERR unknown command")
 	}
+}
+
+func (e *Executor) GetNil() []byte {
+	return []byte("$-1\r\n")
 }
 
 func (e *Executor) GetErrorBytes(s string) []byte {
@@ -276,8 +336,8 @@ func (e *Executor) validateCommandArgs(cmd *RedisCommand) error {
 
 		return nil
 
-	// GET key
-	case actions.Get, actions.Echo, actions.TTL:
+	// GET key, hgetall key
+	case actions.Get, actions.Echo, actions.TTL, actions.HGetAll:
 		if len(cmd.Arguments) != 1 {
 			return errs.IncorrectNumberOfArguments
 		}
@@ -291,13 +351,15 @@ func (e *Executor) validateCommandArgs(cmd *RedisCommand) error {
 
 		return nil
 
-	case actions.Set:
+	// hdel key field [field...]
+	case actions.HDel:
 		if len(cmd.Arguments) < 2 {
 			return errs.IncorrectNumberOfArguments
 		}
 		return nil
 	
-	case actions.Expire:
+	// set key value expire key seconds, hget key field
+	case actions.Set, actions.Expire, actions.HGet:
 		if len(cmd.Arguments) != 2 {
 			return errs.IncorrectNumberOfArguments
 		}
@@ -318,6 +380,13 @@ func (e *Executor) validateCommandArgs(cmd *RedisCommand) error {
 	
 	case actions.BLPop, actions.BRPop:
 		if len(cmd.Arguments) != 1 {
+			return errs.IncorrectNumberOfArguments
+		}
+		return nil
+	
+	// HSET key field value [field value ...]
+	case actions.HSet:
+		if len(cmd.Arguments) < 3 || len(cmd.Arguments) & 1 == 0 {
 			return errs.IncorrectNumberOfArguments
 		}
 		return nil

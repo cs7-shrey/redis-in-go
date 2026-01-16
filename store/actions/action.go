@@ -18,6 +18,11 @@ const (
 	RPop  Action = "rpop"
 	BLPop Action = "blpop"
 	BRPop Action = "brpop"
+
+	HGet    Action = "hget"
+	HSet    Action = "hset"
+	HGetAll Action = "hgetall"
+	HDel    Action = "hdel"
 )
 
 var ValidCommands = map[Action]struct{}{
@@ -27,14 +32,20 @@ var ValidCommands = map[Action]struct{}{
 	Del:    {},
 	Exists: {},
 	Expire: {},
-	TTL: 	{},
+	TTL:    {},
 	Echo:   {},
-	LPop:   {},
-	LPush:  {},
-	RPush:  {},
-	RPop:   {},
-	BLPop:  {},
-	BRPop:  {},
+
+	LPop:  {},
+	LPush: {},
+	RPush: {},
+	RPop:  {},
+	BLPop: {},
+	BRPop: {},
+
+	HSet:    {},
+	HGet:    {},
+	HGetAll: {},
+	HDel:    {},
 }
 
 type BlockingPopDirection Action
