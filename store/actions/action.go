@@ -54,3 +54,19 @@ const (
 	BLEFT  BlockingPopDirection = "left"
 	BRIGHT BlockingPopDirection = "right" // Blocking Right
 )
+
+var MutationCommands = map[Action]struct{}{
+	Set:    {},
+	Del:    {},
+	Expire: {},
+
+	LPop:  {},
+	LPush: {},
+	RPush: {},
+	RPop:  {},
+	BLPop: {},
+	BRPop: {},
+
+	HSet:    {},
+	HDel:    {},
+}
