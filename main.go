@@ -6,7 +6,8 @@ import (
 	"io"
 	"log"
 	"net"
-	"server/commands"
+	"server/commands/executor"
+	"server/commands/serializer"
 	"server/errs"
 	"server/resp"
 	"server/store"
@@ -24,7 +25,7 @@ func main() {
 	defer server.Close()
 
 	store := store.NewStore()
-	executor := commands.NewExecutor(store)
+	executor := executor.NewExecutor(store)
 	go cleanup.RunCleanup(store)
 
 	for {
@@ -39,11 +40,12 @@ func main() {
 }
 
 
-func handleConnection(conn net.Conn, executor *commands.Executor) {
+func handleConnection(conn net.Conn, executor *executor.Executor) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
 	parser := resp.NewParser(reader)
+	sr := serializer.NewSerializer()
 
 	for {
 		message, err := parser.Parse();
@@ -51,12 +53,12 @@ func handleConnection(conn net.Conn, executor *commands.Executor) {
 		fmt.Println(message)
 
 		if err != nil && err == errs.InvalidDataType{
-			conn.Write(executor.GetErrorBytes(err.Error()))
+			conn.Write(sr.GetErrorBytes(err.Error()))
 			continue
 		} else if err != nil && err == io.EOF{
 			return;
 		} else if err != nil {
-			conn.Write(executor.GetErrorBytes(err.Error()))
+			conn.Write(sr.GetErrorBytes(err.Error()))
 			continue;
 		}
 
@@ -65,14 +67,14 @@ func handleConnection(conn net.Conn, executor *commands.Executor) {
 		fmt.Println(cmd)
 
 		if err != nil {
-			conn.Write(executor.GetErrorBytes("ERR COULD NOT EXECUTE COMMAND"))
+			conn.Write(sr.GetErrorBytes("ERR COULD NOT EXECUTE COMMAND"))
 			continue
 		}
 
 		response := executor.ExecuteCommand(cmd)
 
 		if response == nil {
-			conn.Write(executor.GetErrorBytes("ERR COULD NOT EXECUTE COMMAND"))
+			conn.Write(sr.GetErrorBytes("ERR COULD NOT EXECUTE COMMAND"))
 			continue
 		}
 		conn.Write(response)
